@@ -1,0 +1,59 @@
+name: Auto Sync and Build
+
+on:
+  schedule:
+    # Check every 6 hours for new upstream releases
+    - cron: "0 */6 * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/rustdesk/rustdesk.git
+          git fetch upstream --tags
+
+      - name: Check for new release
+        id: check
+        run: |
+          # Get latest upstream tag
+          LATEST_TAG=$(git tag --sort=-version:refname | head -1)
+          echo "Latest upstream tag: $LATEST_TAG"
+
+          # Check if we already have a branch/marker for this tag
+          if git log --oneline -1 --grep="synced: $LATEST_TAG" > /dev/null 2>&1; then
+            echo "Already synced to $LATEST_TAG"
+            echo "new_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New release found: $LATEST_TAG"
+            echo "new_release=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Sync fork to latest release
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          TAG=${{ steps.check.outputs.tag }}
+          git merge "$TAG" --no-edit -m "synced: $TAG"
+          git push origin master
+
+      - name: Trigger build workflow
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          gh workflow run playground.yml \
+            -f upload-artifact=true
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
