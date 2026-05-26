@@ -3,7 +3,7 @@ name: Auto Sync and Build
 on:
   schedule:
     # Check every 6 hours for new upstream releases
-    - cron: "0 */6 * * *"
+    - cron: "0 6 * * 1"
   workflow_dispatch: # Allow manual trigger
 
 jobs:
