@@ -43,17 +43,45 @@ jobs:
             echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Sync fork to latest release
+      - name: Sync rustdesk to latest release
         if: steps.check.outputs.new_release == 'true'
         run: |
           TAG=${{ steps.check.outputs.tag }}
           git merge "$TAG" --no-edit -m "synced: $TAG"
+
+      - name: Sync hbb_common submodule from upstream
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          cd libs/hbb_common
+          git remote add upstream https://github.com/rustdesk/hbb_common.git
+          git fetch upstream
+          git merge upstream/master --no-edit || true
+
+      - name: Re-apply custom server config
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          cd libs/hbb_common
+          sed -i 's|pub const RENDEZVOUS_SERVERS:.*|pub const RENDEZVOUS_SERVERS: \&[\&str] = \&["remote.inviziblenet.work"];|' src/config.rs
+          sed -i 's|pub const RS_PUB_KEY:.*|pub const RS_PUB_KEY: \&str = "Kt+QpmOUQDnyr9puWAcn3ZHHfUsmuoPjrvwyAaZIV00=";|' src/config.rs
+          git add src/config.rs
+          git commit -m "Re-apply custom server config" || true
+
+      - name: Push hbb_common changes
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          cd libs/hbb_common
+          git push origin HEAD:master
+
+      - name: Commit and push rustdesk
+        if: steps.check.outputs.new_release == 'true'
+        run: |
+          git add libs/hbb_common
+          git commit -m "Update hbb_common submodule" || true
           git push origin master
 
       - name: Trigger build workflow
         if: steps.check.outputs.new_release == 'true'
         run: |
-          gh workflow run playground.yml \
-            -f upload-artifact=true
+          gh workflow run flutter-nightly.yml
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
