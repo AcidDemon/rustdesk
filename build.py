@@ -997,10 +997,31 @@ def build_flutter_windows(version, features, skip_portable_pack):
         f'output location: {os.path.abspath(os.curdir)}/rustdesk-{version}-install.exe')
 
 
+def bake_custom_server_config():
+    """Bake self-hosted rendezvous server + public key into hbb_common at build time.
+    Kept here instead of committed to the submodule so libs/hbb_common tracks upstream cleanly.
+    Fails loudly if the upstream constants are ever renamed, instead of silently shipping
+    the upstream public server (which is how custom keys got lost before)."""
+    import re
+    cfg = 'libs/hbb_common/src/config.rs'
+    text = open(cfg, encoding='utf-8').read()
+    text, n1 = re.subn(r'pub const RENDEZVOUS_SERVERS:.*',
+                       'pub const RENDEZVOUS_SERVERS: &[&str] = &["remote.inviziblenet.work"];', text)
+    text, n2 = re.subn(r'pub const RS_PUB_KEY:.*',
+                       'pub const RS_PUB_KEY: &str = "Kt+QpmOUQDnyr9puWAcn3ZHHfUsmuoPjrvwyAaZIV00=";', text)
+    if n1 != 1 or n2 != 1:
+        raise Exception(f'bake_custom_server_config: expected 1 match each, got '
+                        f'RENDEZVOUS_SERVERS={n1} RS_PUB_KEY={n2}; upstream constants moved, fix build.py')
+    open(cfg, 'w', encoding='utf-8').write(text)
+    print(f'baked custom server config into {cfg}')
+
+
 def main():
     global skip_cargo
     parser = make_parser()
     args = parser.parse_args()
+
+    bake_custom_server_config()
 
     # Before anything with a side effect: this is a query, and a caller uses it to build the very
     # binary it will then package. `get_features` stays the single definition of what a flag

@@ -1,0 +1,35 @@
+name: Auto Sync and Build
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+# Keys are baked at build time by build.py (bake_custom_server_config), and
+# libs/hbb_common tracks upstream directly, so this job only keeps master in
+# sync with upstream and kicks off a build. No submodule fork to maintain.
+jobs:
+  sync-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Merge upstream into master
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/rustdesk/rustdesk.git
+          git fetch upstream
+          # Our only local changes are build.py's bake step + this workflow file.
+          # If upstream ever edits build.py's main() on the same lines, this merge
+          # stops on a conflict instead of pushing a broken tree - resolve by hand.
+          git merge upstream/master --no-edit -m "sync upstream"
+          git push origin HEAD:master
+
+      - name: Trigger build
+        run: gh workflow run flutter-nightly.yml
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
