@@ -1013,15 +1013,13 @@ def bake_custom_server_config():
         raise Exception(f'bake_custom_server_config: expected 1 match each, got '
                         f'RENDEZVOUS_SERVERS={n1} RS_PUB_KEY={n2}; upstream constants moved, fix build.py')
     open(cfg, 'w', encoding='utf-8').write(text)
-    print(f'baked custom server config into {cfg}')
+    print(f'baked custom server config into {cfg}', file=sys.stderr)
 
 
 def main():
     global skip_cargo
     parser = make_parser()
     args = parser.parse_args()
-
-    bake_custom_server_config()
 
     # Before anything with a side effect: this is a query, and a caller uses it to build the very
     # binary it will then package. `get_features` stays the single definition of what a flag
@@ -1035,6 +1033,9 @@ def main():
             feats = ','.join(get_features(args))
         print(feats)
         return
+
+    # Real build past this point (query/--print-features already returned): bake keys before cargo.
+    bake_custom_server_config()
 
     if os.path.exists(exe_path):
         os.unlink(exe_path)
